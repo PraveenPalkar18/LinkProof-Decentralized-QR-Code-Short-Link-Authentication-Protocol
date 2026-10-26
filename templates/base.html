@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="LinkProof - Decentralized QR Code and Short-Link Authentication Protocol Using ECDSA and Multi-Hop TLS Verification">
+  <title>{% block title %}LinkProof{% endblock %} — Security Protocol</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <header class="header">
+    <div class="container header-content">
+      <a href="{{ url_for('dashboard.index') }}" class="brand" aria-label="LinkProof Dashboard Home">
+        <div class="brand-icon">LP</div>
+        <div class="brand-title">
+          LinkProof
+          <span class="brand-badge">v{{ protocol_version }}</span>
+        </div>
+      </a>
+
+      <nav class="nav" aria-label="Primary Navigation">
+        <a href="{{ url_for('dashboard.index') }}" class="nav-link {% if request.endpoint == 'dashboard.index' %}active{% endif %}">Dashboard</a>
+        <a href="{{ url_for('verifier.verify_form') }}" class="nav-link {% if request.endpoint == 'verifier.verify_form' or request.endpoint == 'verifier.verify_submit' %}active{% endif %}">Verify</a>
+        <a href="{{ url_for('publisher.generate') }}" class="nav-link {% if request.endpoint == 'publisher.generate' or request.endpoint == 'publisher.sign_and_generate' %}active{% endif %}">Generate QR</a>
+        <a href="{{ url_for('keys.index') }}" class="nav-link {% if request.endpoint == 'keys.index' %}active{% endif %}">Trusted Keys</a>
+        <a href="{{ url_for('about.about') }}" class="nav-link {% if request.endpoint == 'about.about' %}active{% endif %}">About / Protocol</a>
+        
+        <button type="button" class="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Color Theme" aria-label="Toggle Theme">
+          🌓
+        </button>
+      </nav>
+    </div>
+  </header>
+
+  <div class="container flash-container">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="alert alert-{{ category }}" role="alert">
+            <span>{{ message }}</span>
+          </div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+  </div>
+
+  <main class="main-content">
+    <div class="container">
+      {% block content %}{% endblock %}
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer-content">
+      <div>
+        <strong>LinkProof Protocol</strong> — Cryptography &amp; Network Security Protocol
+      </div>
+      <div>
+        ECDSA NIST P-256 &bull; SHA-256 &bull; Multi-Hop TLS &bull; SSRF Mitigations
+      </div>
+    </div>
+  </footer>
+
+  <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>

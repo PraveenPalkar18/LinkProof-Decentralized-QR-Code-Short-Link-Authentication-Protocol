@@ -1,0 +1,7 @@
+Flask>=3.0.0
+cryptography>=42.0.0
+qrcode[pil]>=7.4.2
+Pillow>=10.0.0
+requests>=2.31.0
+opencv-python-headless>=4.9.0.80
+pytest>=8.0.0

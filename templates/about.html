@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+
+{% block title %}About / Protocol{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">Protocol Specification &amp; Architecture</h1>
+  <p class="page-desc">
+    LinkProof provides cryptographic authenticity for physical QR codes and short URLs, mitigating phishing, tampering, and redirection attacks.
+  </p>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 1.25rem; max-width: 880px;">
+  <!-- Section 1: What LinkProof Does -->
+  <div class="card">
+    <div class="card-header">
+      <h2 class="card-title">1. What LinkProof Does</h2>
+    </div>
+    <p style="font-size: 0.9rem; color: var(--text-secondary); line-height: 1.6; margin-bottom: 0.85rem;">
+      Physical QR codes (stickers on parking meters, campus portals, restaurant menus) and shortened links can easily be replaced, modified, or redirected to malicious destinations. While HTTPS encrypts browser traffic, <strong>HTTPS alone does not prove that a website was the destination intended by the publisher</strong>.
+    </p>
+    <p style="font-size: 0.9rem; color: var(--text-secondary); line-height: 1.6;">
+      LinkProof solves this by binding the destination URL, issuer identity, timestamps, and approved redirect policies into a canonical record digitally signed with <strong>ECDSA NIST P-256</strong>. Verifiers authenticate the publisher, check record validity, and audit every redirect hop before allowing connections.
+    </p>
+  </div>
+
+  <!-- Section 2: How Signed QR Verification Works -->
+  <div class="card">
+    <div class="card-header">
+      <h2 class="card-title">2. How Signed QR Verification Works</h2>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; margin-bottom: 1rem;">
+      <div style="background-color: var(--bg-surface-raised); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 0.85rem;">
+        <div style="font-size: 0.8rem; font-weight: 600; color: var(--accent-primary); text-transform: uppercase; margin-bottom: 0.25rem;">
+          Step 1: Canonical Serialization
+        </div>
+        <p style="font-size: 0.825rem; color: var(--text-secondary); line-height: 1.45;">
+          Records are normalized using RFC 8785 JSON canonicalization (alphabetical keys, no whitespace) to ensure signature determinism.
+        </p>
+      </div>
+
+      <div style="background-color: var(--bg-surface-raised); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 0.85rem;">
+        <div style="font-size: 0.8rem; font-weight: 600; color: var(--accent-primary); text-transform: uppercase; margin-bottom: 0.25rem;">
+          Step 2: ECDSA Signature
+        </div>
+        <p style="font-size: 0.825rem; color: var(--text-secondary); line-height: 1.45;">
+          The publisher signs SHA-256(canonical_bytes) with their SECP256R1 private key. The resulting ASN.1 DER signature is Base64 encoded.
+        </p>
+      </div>
+
+      <div style="background-color: var(--bg-surface-raised); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 0.85rem;">
+        <div style="font-size: 0.8rem; font-weight: 600; color: var(--accent-primary); text-transform: uppercase; margin-bottom: 0.25rem;">
+          Step 3: Trust Decoupling
+        </div>
+        <p style="font-size: 0.825rem; color: var(--text-secondary); line-height: 1.45;">
+          Mathematical validity does not imply trust. The verifier checks if the signer's public key fingerprint is explicitly trusted in the local trust store.
+        </p>
+      </div>
+    </div>
+
+    <details class="disclosure">
+      <summary>View Canonical LinkProof Envelope Format</summary>
+      <pre class="code-block" style="margin-top: 0.5rem;">{
+  "protocol": "linkproof",
+  "version": "1.0",
+  "record": {
+    "id": "e4b2f654-7f12-429b-8693-4a1cb5d4918e",
+    "issuer_id": "cns.university.edu",
+    "issuer_fingerprint": "74E18F4B9131C39ACD9649557C125866...",
+    "destination_url": "https://portal.university.edu/login",
+    "purpose": "Official Portal Access",
+    "issued_at": "2026-10-25T12:00:00Z",
+    "expires_at": "2026-11-25T12:00:00Z",
+    "redirect_policy": "same_host",
+    "sig_alg": "ECDSA-P256-SHA256"
+  },
+  "signature": "MEQCIF+f...=="
+}</pre>
+    </details>
+  </div>
+
+  <!-- Section 3: What Multi-Hop Redirect & TLS Auditing Checks -->
+  <div class="card">
+    <div class="card-header">
+      <h2 class="card-title">3. What Redirect &amp; TLS Auditing Checks</h2>
+    </div>
+    <ul style="font-size: 0.875rem; color: var(--text-secondary); padding-left: 1.25rem; line-height: 1.6;">
+      <li><strong>Independent Hop Execution:</strong> Automatic redirects are disabled. Each HTTP 3xx hop is inspected individually for status code, headers, and relative paths.</li>
+      <li><strong>Pre-Flight SSRF Protection:</strong> Hostnames are resolved before connection and checked against private (RFC 1918), loopback (127.0.0.0/8, ::1), and cloud link-local (169.254.169.254) addresses.</li>
+      <li><strong>Loop &amp; Hop Boundaries:</strong> Cyclic redirects are aborted immediately. Maximum hops are restricted to prevent denial-of-service.</li>
+      <li><strong>TLS Certificate Chain:</strong> Validates Subject Alternative Names (SANs), certificate expiry, issuer CA trust, and hostname matching at every HTTPS hop.</li>
+    </ul>
+  </div>
+
+  <!-- Section 4: Known Limitations & Security Boundaries -->
+  <div class="card" style="border-left: 3px solid var(--status-warning);">
+    <div class="card-header">
+      <h2 class="card-title" style="color: var(--status-warning);">4. Known Limitations &amp; Security Assumptions</h2>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 0.75rem; font-size: 0.875rem; color: var(--text-secondary); line-height: 1.55;">
+      <div>
+        <strong style="color: var(--text-primary);">HTTPS is not Phishing Reputation:</strong>
+        <p>A successful TLS handshake and valid certificate only proves encrypted transit to the server named in the certificate. It does not prove that the website is benevolent, harmless, or free from phishing.</p>
+      </div>
+      <div>
+        <strong style="color: var(--text-primary);">Google Safe Browsing Integration:</strong>
+        <p>LinkProof supports real-time phishing and malware lookups via the Google Safe Browsing API v4 using the <code>GOOGLE_SAFE_BROWSING_API_KEY</code> environment variable. The engine returns structured states: <code>THREAT_DETECTED</code>, <code>NO_KNOWN_THREAT</code>, <code>NOT_CHECKED</code>, or <code>CHECK_UNAVAILABLE</code>. If unconfigured, it defaults safely to <code>NOT_CHECKED</code>.</p>
+      </div>
+      <div>
+        <strong style="color: var(--text-primary);">Trust Store Synchronization:</strong>
+        <p>Offline verification validates cryptographic signatures against previously imported keys. However, offline mode cannot detect real-time key revocations or website compromise until the trust store is updated.</p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

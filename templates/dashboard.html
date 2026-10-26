@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="page-header" style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 1rem;">
+  <div>
+    <h1 class="page-title">Security Dashboard</h1>
+    <p class="page-desc">
+      Monitor QR signature integrity, issuer public-key trust, and multi-hop network redirect validation.
+    </p>
+  </div>
+  <div style="display: flex; gap: 0.5rem;">
+    <a href="{{ url_for('verifier.verify_form') }}" class="btn btn-primary">
+      Verify a QR or URL
+    </a>
+    <a href="{{ url_for('publisher.generate') }}" class="btn btn-secondary">
+      Generate Signed QR
+    </a>
+  </div>
+</div>
+
+<!-- Accurate Core Metrics Grid -->
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-title">Total Audits</div>
+    <div class="stat-value">{{ stats.total }}</div>
+    <div class="stat-desc">Lifetime processed verification requests</div>
+  </div>
+
+  <div class="stat-card">
+    <div class="stat-title">Authenticated &amp; Verified</div>
+    <div class="stat-value" style="color: var(--status-verified);">{{ stats.verified }}</div>
+    <div class="stat-desc">Valid ECDSA signature by trusted issuer</div>
+  </div>
+
+  <div class="stat-card">
+    <div class="stat-title">Unauthenticated Audits</div>
+    <div class="stat-value" style="color: var(--status-unauthenticated);">{{ stats.unauthenticated_audits }}</div>
+    <div class="stat-desc">Raw URLs inspected without publisher signature</div>
+  </div>
+
+  <div class="stat-card">
+    <div class="stat-title">Security Rejections</div>
+    <div class="stat-value" style="color: var(--status-danger);">
+      {{ stats.invalid_signatures + stats.unknown_issuers + stats.destination_mismatches + stats.ssrf_blocked + stats.tls_failures + (stats.threats_detected or 0) }}
+    </div>
+    <div class="stat-desc">Invalid signatures, untrusted keys, SSRF, or malware</div>
+  </div>
+</div>
+
+<!-- Recent Verifications Table -->
+<div class="card">
+  <div class="card-header">
+    <h2 class="card-title">Recent Verification Activity</h2>
+    <span class="card-subtitle">Showing up to 15 latest audit records</span>
+  </div>
+
+  {% if recent %}
+  <div class="table-responsive">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Timestamp (UTC)</th>
+          <th>Destination URL</th>
+          <th>Issuer</th>
+          <th>Status</th>
+          <th>Signature</th>
+          <th>Trust Store</th>
+          <th>Hops</th>
+          <th style="text-align: right;">Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in recent %}
+        <tr>
+          <td style="font-family: var(--font-mono); font-size: 0.775rem; color: var(--text-tertiary); white-space: nowrap;">
+            {{ row.verified_at[:19].replace('T', ' ') }}
+          </td>
+          <td style="max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+            <a href="{{ row.destination_url }}" target="_blank" rel="noopener noreferrer" style="color: var(--accent-primary); text-decoration: none; font-family: var(--font-mono); font-size: 0.8rem;">
+              {{ row.destination_url }}
+            </a>
+          </td>
+          <td>
+            <span style="font-weight: 500; font-size: 0.825rem;">
+              {% if row.issuer_id == 'UNTRUSTED_RAW_URL' %}
+                <span style="color: var(--text-tertiary);">None (Raw URL)</span>
+              {% else %}
+                {{ row.issuer_id or 'Unknown' }}
+              {% endif %}
+            </span>
+          </td>
+          <td>
+            {% if row.status == 'VERIFIED' %}
+              <span class="badge badge-verified">Verified</span>
+            {% elif row.status == 'THREAT_DETECTED' %}
+              <span class="badge badge-invalid">Threat Detected</span>
+            {% elif row.status == 'AUDIT_COMPLETE_UNAUTHENTICATED' %}
+              <span class="badge badge-unauthenticated">Audit Only</span>
+            {% elif row.status == 'REVOKED_KEY' %}
+              <span class="badge badge-revoked">Revoked Key</span>
+            {% elif row.status == 'INVALID_SIGNATURE' %}
+              <span class="badge badge-invalid">Invalid Sig</span>
+            {% elif row.status == 'UNKNOWN_ISSUER' %}
+              <span class="badge badge-unknown">Unknown Key</span>
+            {% elif row.status == 'EXPIRED_RECORD' %}
+              <span class="badge badge-expired">Expired</span>
+            {% elif row.status == 'DESTINATION_MISMATCH' %}
+              <span class="badge badge-mismatch">Mismatch</span>
+            {% elif row.status == 'TLS_VALIDATION_FAILED' %}
+              <span class="badge badge-tls-failed">TLS Failed</span>
+            {% elif row.status == 'SSRF_BLOCKED' %}
+              <span class="badge badge-ssrf">SSRF Blocked</span>
+            {% else %}
+              <span class="badge badge-inconclusive">{{ row.status }}</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if row.issuer_id == 'UNTRUSTED_RAW_URL' %}
+              <span style="color: var(--text-tertiary); font-size: 0.8rem;">N/A</span>
+            {% elif row.signature_valid %}
+              <span style="color: var(--status-verified); font-weight: 600; font-size: 0.8rem;">Valid</span>
+            {% else %}
+              <span style="color: var(--status-danger); font-weight: 600; font-size: 0.8rem;">Invalid</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if row.issuer_id == 'UNTRUSTED_RAW_URL' %}
+              <span style="color: var(--text-tertiary); font-size: 0.8rem;">N/A</span>
+            {% elif row.issuer_trusted %}
+              <span style="color: var(--status-verified); font-weight: 600; font-size: 0.8rem;">Trusted</span>
+            {% else %}
+              <span style="color: var(--status-warning); font-weight: 600; font-size: 0.8rem;">Untrusted</span>
+            {% endif %}
+          </td>
+          <td style="font-family: var(--font-mono); font-size: 0.8rem; color: var(--text-secondary);">
+            {{ row.hops_count }}
+          </td>
+          <td style="text-align: right; white-space: nowrap;">
+            <a href="{{ url_for('verifier.result_detail', history_id=row.id) }}" class="btn btn-secondary btn-sm">
+              View Report &rarr;
+            </a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div style="text-align: center; padding: 2.5rem 1rem; color: var(--text-tertiary);">
+    <p style="font-size: 0.95rem; margin-bottom: 1rem; color: var(--text-secondary);">No verification audits recorded yet.</p>
+    <a href="{{ url_for('verifier.verify_form') }}" class="btn btn-primary btn-sm">Verify a QR Code or URL</a>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

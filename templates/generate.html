@@ -1,0 +1,231 @@
+{% extends "base.html" %}
+
+{% block title %}Generate Signed QR{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">Generate Signed QR Record</h1>
+  <p class="page-desc">
+    Digitally sign destination URLs using ECDSA NIST P-256 and generate authoritative, tamper-evident QR codes.
+  </p>
+</div>
+
+{% if result_payload %}
+<!-- Generated Result Showcase -->
+<div class="card" style="border-color: var(--status-verified-border); background-color: var(--bg-surface); margin-bottom: 2rem;">
+  <div class="card-header">
+    <div class="card-title" style="color: var(--status-verified);">
+      ✓ LinkProof QR Code Generated &amp; Signed
+    </div>
+    <span class="badge badge-verified">ECDSA P-256</span>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1.5rem; align-items: start;">
+    <!-- QR Image & Actions -->
+    <div style="text-align: center; background-color: var(--bg-surface-raised); padding: 1.25rem; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+      <img src="{{ qr_data_uri }}" alt="Signed QR Code" style="max-width: 200px; width: 100%; border-radius: var(--radius-xs); border: 1px solid var(--border-subtle); background: #ffffff; padding: 0.5rem;" />
+
+      <div style="margin-top: 1rem; display: flex; flex-direction: column; gap: 0.5rem;">
+        <form action="{{ url_for('publisher.download_qr') }}" method="POST">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="payload_json" value='{{ result_payload_json }}'>
+          <input type="hidden" name="filename" value="linkproof-{{ record.id[:8] }}.png">
+          <button type="submit" class="btn btn-primary" style="width: 100%;">
+            Download QR (PNG)
+          </button>
+        </form>
+
+        <form action="{{ url_for('verifier.verify_submit') }}" method="POST">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="input_mode" value="payload">
+          <input type="hidden" name="payload_text" value='{{ result_payload_json }}'>
+          <button type="submit" class="btn btn-secondary" style="width: 100%;">
+            Test &amp; Verify Record &rarr;
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Metadata Summary -->
+    <div>
+      <h3 style="font-size: 0.95rem; font-weight: 600; margin-bottom: 0.65rem;">Record Attributes</h3>
+      
+      <div style="display: flex; flex-direction: column; gap: 0.65rem; font-size: 0.85rem;">
+        <div>
+          <span style="color: var(--text-tertiary); display: block; font-size: 0.725rem; text-transform: uppercase;">Destination URL:</span>
+          <span style="font-family: var(--font-mono); color: var(--accent-primary); font-weight: 600; word-break: break-all;">
+            {{ record.destination_url }}
+          </span>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
+          <div>
+            <span style="color: var(--text-tertiary); display: block; font-size: 0.725rem; text-transform: uppercase;">Issuer:</span>
+            <span style="font-weight: 600;">{{ record.issuer_id }}</span>
+          </div>
+          <div>
+            <span style="color: var(--text-tertiary); display: block; font-size: 0.725rem; text-transform: uppercase;">Redirect Policy:</span>
+            <span class="badge badge-inconclusive">{{ record.redirect_policy }}</span>
+          </div>
+        </div>
+
+        <div>
+          <span style="color: var(--text-tertiary); display: block; font-size: 0.725rem; text-transform: uppercase;">Issuer Key Fingerprint:</span>
+          <span class="fingerprint-text" style="font-size: 0.75rem;">{{ record.issuer_fingerprint }}</span>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
+          <div>
+            <span style="color: var(--text-tertiary); display: block; font-size: 0.725rem; text-transform: uppercase;">Issued At:</span>
+            <span style="font-family: var(--font-mono); font-size: 0.75rem;">{{ record.issued_at[:19].replace('T', ' ') }} UTC</span>
+          </div>
+          <div>
+            <span style="color: var(--text-tertiary); display: block; font-size: 0.725rem; text-transform: uppercase;">Expires At:</span>
+            <span style="font-family: var(--font-mono); font-size: 0.75rem;">{{ record.expires_at[:19].replace('T', ' ') }} UTC</span>
+          </div>
+        </div>
+      </div>
+
+      <details class="disclosure" style="margin-top: 1rem;">
+        <summary>View Canonical JSON Payload</summary>
+        <div style="margin-top: 0.5rem;">
+          <div style="display: flex; justify-content: flex-end; margin-bottom: 0.35rem;">
+            <button type="button" class="btn btn-secondary btn-sm" onclick="copyToClipboard(document.getElementById('payload_block').innerText, 'Payload copied to clipboard!')">
+              Copy JSON
+            </button>
+          </div>
+          <pre class="code-block" id="payload_block" style="max-height: 160px;">{{ result_payload_json }}</pre>
+        </div>
+      </details>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem; align-items: start;">
+  <!-- Main Workflow: Sign & Generate QR -->
+  <div class="card">
+    <div class="card-header">
+      <h2 class="card-title">Sign &amp; Generate QR</h2>
+      <span class="card-subtitle">Authoritative Publisher</span>
+    </div>
+
+    <form action="{{ url_for('publisher.sign_and_generate') }}" method="POST">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+      <div class="form-group">
+        <label class="form-label" for="dest_url">Destination URL *</label>
+        <input type="url" class="form-control" id="dest_url" name="destination_url" placeholder="https://portal.example.edu/login" required>
+        <div class="form-help">Destination URL to be cryptographically bound to your signature.</div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="issuer_id_input">Issuer Identifier *</label>
+        <input type="text" class="form-control" id="issuer_id_input" name="issuer_id" placeholder="e.g. university.edu" value="cns.university.edu" required>
+        <div class="form-help">Unique identifier matching your registered public key.</div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+        <div class="form-group">
+          <label class="form-label" for="redirect_policy">Redirect Policy</label>
+          <select class="form-control" id="redirect_policy" name="redirect_policy">
+            <option value="same_host" selected>Same Host</option>
+            <option value="strict_exact">Strict Exact (No redirects)</option>
+            <option value="same_registered_domain">Same Registered Domain</option>
+            <option value="allow_any_tls">Allow Any TLS Destination</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="expires_at">Expiration (UTC)</label>
+          <input type="datetime-local" class="form-control" id="expires_at" name="expires_at" value="{{ default_expiry }}">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="purpose_input">Purpose / Description</label>
+        <input type="text" class="form-control" id="purpose_input" name="purpose" placeholder="e.g. Official Student Portal Login">
+      </div>
+
+      <div style="border-top: 1px solid var(--border-subtle); margin-top: 1rem; padding-top: 1rem;">
+        <div class="form-group">
+          <label class="form-label" for="key_id_select">Signing Key *</label>
+          {% if publisher_keys %}
+          <select class="form-control" id="key_id_select" name="key_id">
+            {% for k in publisher_keys %}
+            <option value="{{ k.id }}">{{ k.label or k.issuer_id }} (FP: {{ k.fingerprint[:12] }}...)</option>
+            {% endfor %}
+          </select>
+          {% else %}
+          <div style="background-color: var(--status-warning-bg); border: 1px solid var(--status-warning-border); padding: 0.65rem 0.85rem; border-radius: var(--radius-sm); font-size: 0.825rem; color: var(--status-warning); margin-bottom: 0.5rem;">
+            No publisher keys found. Use the panel to generate an ECDSA signing key first.
+          </div>
+          {% endif %}
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="passphrase_input">Key Passphrase *</label>
+          <input type="password" class="form-control" id="passphrase_input" name="passphrase" placeholder="Passphrase to decrypt private key" required>
+          <div class="form-help">Decrypted in memory solely for generating the ECDSA signature.</div>
+        </div>
+
+        <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 0.5rem; padding: 0.7rem;">
+          Sign Record &amp; Generate QR
+        </button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Key Generation Panel -->
+  <div class="card">
+    <div class="card-header">
+      <h2 class="card-title">Generate Publisher Key</h2>
+      <span class="card-subtitle">ECDSA NIST P-256</span>
+    </div>
+
+    <p style="font-size: 0.825rem; color: var(--text-secondary); margin-bottom: 1rem; line-height: 1.45;">
+      Create a new ECDSA P-256 key pair. The private key is encrypted with AES-256 using your passphrase and stored securely on the local system.
+    </p>
+
+    <form action="{{ url_for('publisher.create_key') }}" method="POST">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+      <div class="form-group">
+        <label class="form-label" for="gen_issuer_id">Issuer Identifier *</label>
+        <input type="text" class="form-control" id="gen_issuer_id" name="issuer_id" placeholder="e.g. cns.university.edu" required>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="gen_label">Key Label / Friendly Name</label>
+        <input type="text" class="form-control" id="gen_label" name="label" placeholder="e.g. University Production Key">
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="gen_passphrase">Passphrase (min 6 characters) *</label>
+        <input type="password" class="form-control" id="gen_passphrase" name="passphrase" minlength="6" placeholder="Passphrase to encrypt private key" required>
+        <div class="form-help">Never stored in plaintext. Required each time you sign records.</div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-checkbox">
+          <input type="checkbox" name="auto_trust" value="1" checked>
+          <span>Register public key into Local Trusted Keys store</span>
+        </label>
+      </div>
+
+      <button type="submit" class="btn btn-secondary" style="width: 100%; margin-top: 0.5rem;">
+        Generate &amp; Save Key Pair
+      </button>
+    </form>
+
+    <details class="disclosure" style="margin-top: 1.25rem;">
+      <summary>Security &amp; Key Storage Specifications</summary>
+      <ul style="font-size: 0.8rem; color: var(--text-secondary); padding-left: 1.2rem; line-height: 1.5; margin-top: 0.45rem;">
+        <li>Private keys are encrypted via PKCS#8 with PBKDF2 and AES-256-CBC.</li>
+        <li>Public keys are identified by their SHA-256 fingerprint over SubjectPublicKeyInfo DER.</li>
+        <li>Private keys are never exposed in responses or web-accessible directories.</li>
+      </ul>
+    </details>
+  </div>
+</div>
+{% endblock %}

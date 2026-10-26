@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+
+{% block title %}Verify QR / Link{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">Verify a QR Code or Link</h1>
+  <p class="page-desc">
+    Authenticate publisher identity via ECDSA P-256 signatures, validate certificates, and audit multi-hop redirect chains.
+  </p>
+</div>
+
+<div style="max-width: 760px; margin: 0 auto;">
+  <!-- Concise Protocol Distinction Note -->
+  <div style="background-color: var(--bg-surface-raised); border: 1px solid var(--border-subtle); border-left: 3px solid var(--accent-primary); border-radius: var(--radius-sm); padding: 0.75rem 1rem; margin-bottom: 1.25rem; font-size: 0.825rem; color: var(--text-secondary); line-height: 1.5;">
+    <strong style="color: var(--text-primary);">Security Note:</strong> Signed QR codes and payloads authenticate publisher identity using ECDSA P-256 signatures matched against trusted keys. Raw URLs undergo redirect, TLS, and SSRF auditing, but are marked <code>AUDIT_COMPLETE_UNAUTHENTICATED</code> because no publisher identity is signed.
+  </div>
+
+  <div class="card">
+    <div class="tabs" role="tablist">
+      <button type="button" class="tab-btn active" role="tab" aria-selected="true" onclick="switchTab(event, 'tab-upload')">
+        Upload QR Image
+      </button>
+      <button type="button" class="tab-btn" role="tab" aria-selected="false" onclick="switchTab(event, 'tab-payload')">
+        Paste Signed Payload
+      </button>
+      <button type="button" class="tab-btn" role="tab" aria-selected="false" onclick="switchTab(event, 'tab-url')">
+        Audit Raw URL
+      </button>
+    </div>
+
+    <form action="{{ url_for('verifier.verify_submit') }}" method="POST" enctype="multipart/form-data">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="input_mode" id="input_mode_field" value="upload">
+
+      <!-- Mode 1: Upload QR Image -->
+      <div id="tab-upload" class="tab-pane active" role="tabpanel">
+        <div class="dropzone" id="qr-dropzone">
+          <input type="file" id="qr-file-input" name="qr_image" accept="image/png,image/jpeg,image/webp,image/bmp">
+          <div class="dropzone-icon">📷</div>
+          <div style="font-size: 0.95rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0.25rem;">
+            Click to upload or drag &amp; drop a QR code image
+          </div>
+          <div style="font-size: 0.8rem; color: var(--text-tertiary);">
+            Supports PNG, JPEG, WEBP, and BMP images
+          </div>
+          <img id="qr-preview-img" class="dropzone-preview" alt="QR Preview">
+        </div>
+        <div class="form-help" style="text-align: center; margin-top: 0.5rem;">
+          Decoded locally using OpenCV ArUco detector with contrast and boundary thresholding.
+        </div>
+      </div>
+
+      <!-- Mode 2: Paste Payload -->
+      <div id="tab-payload" class="tab-pane" role="tabpanel">
+        <div class="form-group" style="margin-bottom: 0;">
+          <label class="form-label" for="payload_text">LinkProof Canonical JSON Payload</label>
+          <textarea class="form-control" id="payload_text" name="payload_text" rows="7" placeholder='{"protocol":"linkproof","version":"1.0","record":{...},"signature":"..."}'></textarea>
+          <div class="form-help">Paste the canonical JSON envelope containing record metadata and Base64 ECDSA signature.</div>
+        </div>
+      </div>
+
+      <!-- Mode 3: Audit Raw URL -->
+      <div id="tab-url" class="tab-pane" role="tabpanel">
+        <div class="form-group" style="margin-bottom: 0;">
+          <label class="form-label" for="raw_url">Destination or Shortened URL</label>
+          <input type="url" class="form-control" id="raw_url" name="raw_url" placeholder="https://example.com/target">
+          <div class="form-help">Performs step-by-step redirect inspection, TLS certificate validation, and SSRF address filtering.</div>
+        </div>
+      </div>
+
+      <!-- Options Section -->
+      <div style="border-top: 1px solid var(--border-subtle); margin-top: 1.25rem; padding-top: 1.15rem;">
+        <div class="form-group" style="margin-bottom: 0.75rem;">
+          <label class="form-checkbox">
+            <input type="checkbox" name="offline_mode" value="1">
+            <span>
+              <strong>Offline Mode:</strong> Verify signature cryptographically without network requests
+            </span>
+          </label>
+          <div class="form-help" style="margin-left: 1.6rem;">
+            Validates ECDSA math against local trusted keys without DNS lookups, TLS connections, or redirect requests.
+          </div>
+        </div>
+
+        <details class="disclosure" style="margin-top: 0.75rem;">
+          <summary>Advanced: Provide Override Public Key PEM (Testing only)</summary>
+          <div style="margin-top: 0.65rem;">
+            <textarea class="form-control" name="public_key_override" rows="3" placeholder="-----BEGIN PUBLIC KEY-----&#10;...&#10;-----END PUBLIC KEY-----"></textarea>
+            <div class="form-help">
+              Supplying an override key tests mathematical validity, but will be marked <code>UNKNOWN_ISSUER</code> unless explicitly present in your trusted keys store.
+            </div>
+          </div>
+        </details>
+      </div>
+
+      <div style="margin-top: 1.25rem;">
+        <button type="submit" class="btn btn-primary" style="width: 100%; padding: 0.7rem; font-size: 0.95rem;">
+          Verify &amp; Audit Destination
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

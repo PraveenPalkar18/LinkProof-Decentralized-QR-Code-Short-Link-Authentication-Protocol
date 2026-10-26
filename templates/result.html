@@ -1,0 +1,462 @@
+{% extends "base.html" %}
+
+{% block title %}Audit Report #{{ item.id }}{% endblock %}
+
+{% block content %}
+<div class="page-header" style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 1rem;">
+  <div>
+    <div style="display: flex; align-items: center; gap: 0.65rem;">
+      <h1 class="page-title" style="margin-bottom: 0;">Audit Report #{{ item.id }}</h1>
+      {% if item.offline_mode %}
+        <span class="badge badge-inconclusive">Offline Mode</span>
+      {% endif %}
+    </div>
+    <p class="page-desc" style="font-size: 0.85rem; margin-top: 0.25rem;">
+      Evaluated on {{ item.verified_at[:19].replace('T', ' ') }} UTC &bull; Client IP: {{ item.client_ip }}
+    </p>
+  </div>
+
+  <div style="display: flex; gap: 0.5rem;">
+    <a href="{{ url_for('verifier.verify_form') }}" class="btn btn-primary btn-sm">
+      Verify Another Link
+    </a>
+    <a href="{{ url_for('dashboard.index') }}" class="btn btn-secondary btn-sm">
+      Dashboard
+    </a>
+  </div>
+</div>
+
+<!-- Primary Verdict Summary Banner -->
+<div class="verdict-banner {% if item.status == 'VERIFIED' %}verified{% elif item.status == 'AUDIT_COMPLETE_UNAUTHENTICATED' %}unauthenticated{% elif item.status in ['INVALID_SIGNATURE', 'SSRF_BLOCKED', 'REVOKED_KEY', 'DESTINATION_MISMATCH', 'TLS_VALIDATION_FAILED', 'THREAT_DETECTED'] %}failed{% else %}warning{% endif %}">
+  <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 1rem;">
+    <div>
+      <div style="font-size: 0.725rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-tertiary); font-weight: 600; margin-bottom: 0.35rem;">
+        Overall Verification Status
+      </div>
+
+      <div style="display: flex; align-items: center; gap: 0.65rem; flex-wrap: wrap;">
+        {% if item.status == 'VERIFIED' %}
+          <span class="badge badge-verified" style="font-size: 0.95rem; padding: 0.35rem 0.85rem;">✓ VERIFIED</span>
+        {% elif item.status == 'THREAT_DETECTED' %}
+          <span class="badge badge-invalid" style="font-size: 0.95rem; padding: 0.35rem 0.85rem;">⛔ THREAT DETECTED</span>
+        {% elif item.status == 'AUDIT_COMPLETE_UNAUTHENTICATED' %}
+          <span class="badge badge-unauthenticated" style="font-size: 0.95rem; padding: 0.35rem 0.85rem;">AUDIT COMPLETE (UNAUTHENTICATED)</span>
+        {% elif item.status == 'REVOKED_KEY' %}
+          <span class="badge badge-revoked" style="font-size: 0.95rem; padding: 0.35rem 0.85rem;">⛔ REVOKED KEY</span>
+        {% elif item.status == 'INVALID_SIGNATURE' %}
+          <span class="badge badge-invalid" style="font-size: 0.95rem; padding: 0.35rem 0.85rem;">✗ INVALID SIGNATURE</span>
+        {% elif item.status == 'UNKNOWN_ISSUER' %}
+          <span class="badge badge-unknown" style="font-size: 0.95rem; padding: 0.35rem 0.85rem;">⚠️ UNKNOWN ISSUER</span>
+        {% elif item.status == 'EXPIRED_RECORD' %}
+          <span class="badge badge-expired" style="font-size: 0.95rem; padding: 0.35rem 0.85rem;">⏱ EXPIRED RECORD</span>
+        {% elif item.status == 'DESTINATION_MISMATCH' %}
+          <span class="badge badge-mismatch" style="font-size: 0.95rem; padding: 0.35rem 0.85rem;">⚡ DESTINATION MISMATCH</span>
+        {% elif item.status == 'TLS_VALIDATION_FAILED' %}
+          <span class="badge badge-tls-failed" style="font-size: 0.95rem; padding: 0.35rem 0.85rem;">🔒 TLS VALIDATION FAILED</span>
+        {% elif item.status == 'SSRF_BLOCKED' %}
+          <span class="badge badge-ssrf" style="font-size: 0.95rem; padding: 0.35rem 0.85rem;">🛡️ SSRF BLOCKED</span>
+        {% else %}
+          <span class="badge badge-inconclusive" style="font-size: 0.95rem; padding: 0.35rem 0.85rem;">{{ item.status }}</span>
+        {% endif %}
+
+        <span style="font-size: 0.8rem; color: var(--text-tertiary);">
+          Authenticity: <strong>{{ item.report.authenticity_status or 'NOT_VERIFIED' }}</strong>
+        </span>
+      </div>
+
+      <p style="margin-top: 0.65rem; font-size: 0.9rem; color: var(--text-primary); line-height: 1.5;">
+        {{ item.report.summary_message or 'Evaluation completed.' }}
+      </p>
+
+      {% if item.report.is_raw_url or item.issuer_id == 'UNTRUSTED_RAW_URL' %}
+      <div style="margin-top: 0.65rem; background-color: var(--status-unauthenticated-bg); border-left: 3px solid var(--status-unauthenticated); padding: 0.55rem 0.75rem; border-radius: var(--radius-xs); font-size: 0.8rem; color: var(--text-primary);">
+        <strong>Unauthenticated URL Notice:</strong> Network audit succeeded, but this URL was not cryptographically authenticated by a publisher signature. Valid HTTPS certificates do not prove that a website is legitimate or harmless.
+      </div>
+      {% endif %}
+    </div>
+
+    {% if item.status == 'UNKNOWN_ISSUER' and item.issuer_fingerprint and item.issuer_fingerprint != 'NONE' %}
+    <div>
+      <a href="{{ url_for('keys.index') }}" class="btn btn-secondary btn-sm" style="color: var(--status-warning); border-color: var(--status-warning-border);">
+        Import &amp; Trust Issuer Key &rarr;
+      </a>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Target URL and Issuer Binding Card -->
+<div class="card">
+  <div class="card-header">
+    <h2 class="card-title">Target Destination &amp; Issuer Binding</h2>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 0.85rem; font-size: 0.85rem;">
+    <div>
+      <span style="color: var(--text-tertiary); display: block; font-size: 0.725rem; text-transform: uppercase;">
+        {% if item.report.is_raw_url or item.issuer_id == 'UNTRUSTED_RAW_URL' %}Submitted Target URL:{% else %}Signed Destination URL:{% endif %}
+      </span>
+      <div style="display: flex; align-items: center; gap: 0.5rem; margin-top: 0.2rem;">
+        <span style="font-family: var(--font-mono); color: var(--accent-primary); font-weight: 600; font-size: 0.95rem; word-break: break-all;">
+          {{ item.destination_url }}
+        </span>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="copyToClipboard('{{ item.destination_url }}')">
+          Copy
+        </button>
+      </div>
+    </div>
+
+    {% if item.final_url and item.final_url != item.destination_url %}
+    <div>
+      <span style="color: var(--text-tertiary); display: block; font-size: 0.725rem; text-transform: uppercase;">Final Resolved Destination URL:</span>
+      <div style="display: flex; align-items: center; gap: 0.5rem; margin-top: 0.2rem;">
+        <span style="font-family: var(--font-mono); color: var(--status-danger); font-weight: 600; font-size: 0.95rem; word-break: break-all;">
+          {{ item.final_url }}
+        </span>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="copyToClipboard('{{ item.final_url }}')">
+          Copy
+        </button>
+      </div>
+    </div>
+    {% endif %}
+
+    <div>
+      <span style="color: var(--text-tertiary); display: block; font-size: 0.725rem; text-transform: uppercase;">Issuer Key Fingerprint (SHA-256 over SubjectPublicKeyInfo):</span>
+      <div style="display: flex; align-items: center; gap: 0.5rem; margin-top: 0.2rem;">
+        {% if item.report.is_raw_url or item.issuer_id == 'UNTRUSTED_RAW_URL' or item.issuer_fingerprint == 'NONE' %}
+          <span style="color: var(--text-tertiary); font-style: italic;">None — Raw URL has no cryptographic issuer binding</span>
+        {% else %}
+          <span class="fingerprint-text">{{ item.issuer_fingerprint }}</span>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="copyToClipboard('{{ item.issuer_fingerprint }}')">
+            Copy
+          </button>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Security Findings Breakdown Matrix (8 Checks) -->
+<div class="card">
+  <div class="card-header">
+    <h2 class="card-title">Security &amp; Protocol Verification Checklist</h2>
+    <span class="card-subtitle">8-Point Security Inspection</span>
+  </div>
+
+  <div class="checklist-grid">
+    <!-- Check 1: Format -->
+    <div class="checklist-item">
+      <div class="checklist-item-header">
+        <span class="checklist-item-title">1. Envelope Format</span>
+        {% if item.report.is_raw_url or item.issuer_id == 'UNTRUSTED_RAW_URL' %}
+          <span style="color: var(--text-tertiary); font-weight: 600; font-size: 0.775rem;">N/A (Raw URL)</span>
+        {% else %}
+          <span style="color: var(--status-verified); font-weight: 700; font-size: 0.775rem;">✓ Valid</span>
+        {% endif %}
+      </div>
+      <div class="checklist-item-desc">
+        {% if item.report.is_raw_url or item.issuer_id == 'UNTRUSTED_RAW_URL' %}
+          Unsigned raw URL. No LinkProof envelope supplied.
+        {% else %}
+          LinkProof Protocol canonical JSON confirmed.
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Check 2: Signature -->
+    <div class="checklist-item">
+      <div class="checklist-item-header">
+        <span class="checklist-item-title">2. ECDSA Signature</span>
+        {% if item.report.is_raw_url or item.issuer_id == 'UNTRUSTED_RAW_URL' %}
+          <span style="color: var(--text-tertiary); font-weight: 600; font-size: 0.775rem;">NOT_VERIFIED</span>
+        {% elif item.signature_valid %}
+          <span style="color: var(--status-verified); font-weight: 700; font-size: 0.775rem;">✓ Valid</span>
+        {% else %}
+          <span style="color: var(--status-danger); font-weight: 700; font-size: 0.775rem;">✗ Invalid</span>
+        {% endif %}
+      </div>
+      <div class="checklist-item-desc">
+        {% if item.report.is_raw_url or item.issuer_id == 'UNTRUSTED_RAW_URL' %}
+          No digital signature provided for this URL.
+        {% else %}
+          NIST P-256 + SHA-256 signature verification.
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Check 3: Issuer Trust -->
+    <div class="checklist-item">
+      <div class="checklist-item-header">
+        <span class="checklist-item-title">3. Issuer Trust Store</span>
+        {% if item.report.is_raw_url or item.issuer_id == 'UNTRUSTED_RAW_URL' %}
+          <span style="color: var(--text-tertiary); font-weight: 600; font-size: 0.775rem;">N/A (Raw URL)</span>
+        {% elif item.status == 'REVOKED_KEY' %}
+          <span style="color: var(--status-danger); font-weight: 700; font-size: 0.775rem;">⛔ REVOKED</span>
+        {% elif item.issuer_trusted %}
+          <span style="color: var(--status-verified); font-weight: 700; font-size: 0.775rem;">✓ Trusted</span>
+        {% else %}
+          <span style="color: var(--status-warning); font-weight: 700; font-size: 0.775rem;">⚠️ Untrusted</span>
+        {% endif %}
+      </div>
+      <div class="checklist-item-desc">
+        {% if item.report.is_raw_url or item.issuer_id == 'UNTRUSTED_RAW_URL' %}
+          Anonymous origin. No issuer identity asserted.
+        {% elif item.status == 'REVOKED_KEY' %}
+          Issuer public key is explicitly revoked.
+        {% elif item.issuer_trusted %}
+          Public key trusted in verifier's trust store.
+        {% else %}
+          Issuer key unknown or not marked trusted.
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Check 4: Expiration -->
+    <div class="checklist-item">
+      <div class="checklist-item-header">
+        <span class="checklist-item-title">4. Validity Window</span>
+        {% if item.report.is_raw_url or item.issuer_id == 'UNTRUSTED_RAW_URL' %}
+          <span style="color: var(--text-tertiary); font-weight: 600; font-size: 0.775rem;">N/A (No Expiry)</span>
+        {% elif not item.is_expired %}
+          <span style="color: var(--status-verified); font-weight: 700; font-size: 0.775rem;">✓ Active</span>
+        {% else %}
+          <span style="color: var(--status-danger); font-weight: 700; font-size: 0.775rem;">✗ Expired</span>
+        {% endif %}
+      </div>
+      <div class="checklist-item-desc">
+        {% if item.report.is_raw_url or item.issuer_id == 'UNTRUSTED_RAW_URL' %}
+          Raw URLs declare no cryptographic expiration window.
+        {% else %}
+          Checked against record UTC expiration timestamp.
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Check 5: Replay Tracking -->
+    <div class="checklist-item">
+      <div class="checklist-item-header">
+        <span class="checklist-item-title">5. Replay History</span>
+        {% if item.report.is_raw_url or item.issuer_id == 'UNTRUSTED_RAW_URL' %}
+          <span style="color: var(--text-tertiary); font-weight: 600; font-size: 0.775rem;">N/A</span>
+        {% elif item.is_replay %}
+          <span style="color: var(--status-warning); font-weight: 700; font-size: 0.775rem;">⚠️ Seen Before</span>
+        {% else %}
+          <span style="color: var(--status-verified); font-weight: 700; font-size: 0.775rem;">✓ First Seen</span>
+        {% endif %}
+      </div>
+      <div class="checklist-item-desc">
+        {% if item.report.is_raw_url or item.issuer_id == 'UNTRUSTED_RAW_URL' %}
+          Ad-hoc submission without record UUID.
+        {% elif item.is_replay %}
+          Record UUID verified previously in database.
+        {% else %}
+          Unique record UUID detected for the first time.
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Check 6: Destination & Redirect Policy -->
+    <div class="checklist-item">
+      <div class="checklist-item-header">
+        <span class="checklist-item-title">6. Redirect Policy</span>
+        {% if item.destination_matched %}
+          <span style="color: var(--status-verified); font-weight: 700; font-size: 0.775rem;">✓ Satisfied</span>
+        {% else %}
+          <span style="color: var(--status-danger); font-weight: 700; font-size: 0.775rem;">✗ Mismatch</span>
+        {% endif %}
+      </div>
+      <div class="checklist-item-desc">
+        Final destination complies with approved redirect policy.
+      </div>
+    </div>
+
+    <!-- Check 7: TLS Validation -->
+    <div class="checklist-item">
+      <div class="checklist-item-header">
+        <span class="checklist-item-title">7. TLS Handshake</span>
+        {% if item.tls_valid %}
+          <span style="color: var(--status-verified); font-weight: 700; font-size: 0.775rem;">✓ Valid TLS</span>
+        {% else %}
+          <span style="color: var(--status-danger); font-weight: 700; font-size: 0.775rem;">✗ Insecure / Error</span>
+        {% endif %}
+      </div>
+      <div class="checklist-item-desc">
+        Certificate trust chain and hostname verified per hop.
+      </div>
+    </div>
+
+    <!-- Check 8: Threat Reputation -->
+    <div class="checklist-item" {% if item.report.threat_reputation == 'THREAT_DETECTED' %}style="border-color: var(--status-danger-border); background-color: var(--status-danger-bg);"{% endif %}>
+      <div class="checklist-item-header">
+        <span class="checklist-item-title">8. Threat Reputation</span>
+        {% if item.report.threat_reputation == 'THREAT_DETECTED' %}
+          <span class="badge badge-invalid">⛔ {{ item.report.threat_reputation_result.threat_category or item.report.threat_reputation_result.threat_type or 'THREAT' }}</span>
+        {% elif item.report.threat_reputation == 'NO_KNOWN_THREAT' %}
+          <span class="badge badge-verified">✓ NO KNOWN THREAT</span>
+        {% elif item.report.threat_reputation == 'CHECK_UNAVAILABLE' %}
+          <span class="badge badge-unknown">⚠️ UNAVAILABLE</span>
+        {% else %}
+          <span class="badge badge-not-checked">NOT_CHECKED</span>
+        {% endif %}
+      </div>
+      <div class="checklist-item-desc">
+        {% if item.report.threat_reputation == 'THREAT_DETECTED' %}
+          <strong>Provider Warning:</strong> Google Safe Browsing identified {{ item.report.threat_reputation_result.threat_category or 'a malicious threat' }} on inspected destination.
+        {% elif item.report.threat_reputation == 'NO_KNOWN_THREAT' %}
+          No known threats reported by Google Safe Browsing. (Does not prove destination is harmless).
+        {% elif item.report.threat_reputation == 'CHECK_UNAVAILABLE' %}
+          {{ item.report.threat_reputation_message or 'Threat lookup temporarily unavailable.' }}
+        {% else %}
+          Provider not configured (GOOGLE_SAFE_BROWSING_API_KEY unset).
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Expandable Multi-Hop Redirect Chain Audit -->
+{% if item.report.network_audit and item.report.network_audit.hops %}
+<details class="disclosure" open>
+  <summary style="font-size: 0.95rem;">
+    Multi-Hop Redirect Chain Audit:
+    {% if item.report.network_audit.redirect_count == 0 %}
+      Direct Initial Response (0 Redirects, 1 Request)
+    {% else %}
+      {{ item.report.network_audit.redirect_count }} Redirect{% if item.report.network_audit.redirect_count > 1 %}s{% endif %} ({{ item.report.network_audit.total_requests or (item.report.network_audit.total_hops + 1) }} Total Requests)
+    {% endif %}
+    &bull; Policy: <code>{{ item.report.network_audit.redirect_policy }}</code>
+  </summary>
+
+  <div style="margin-top: 0.85rem;">
+    <div class="redirect-timeline">
+      {% for hop in item.report.network_audit.hops %}
+      <div class="timeline-node {% if loop.last %}final-node{% endif %}">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
+          <div style="font-weight: 600; font-size: 0.85rem;">
+            Hop #{{ hop.hop }}:
+            {% if hop.status_code == 200 %}
+              <span style="color: var(--status-verified);">HTTP 200 OK</span>
+            {% elif hop.status_code in [301, 308] %}
+              <span style="color: var(--accent-primary);">HTTP {{ hop.status_code }} Permanent Redirect</span>
+            {% elif hop.status_code in [302, 303, 307] %}
+              <span style="color: var(--status-warning);">HTTP {{ hop.status_code }} Temporary Redirect</span>
+            {% elif hop.status_code == 0 %}
+              <span style="color: var(--status-danger);">Blocked / Error</span>
+            {% else %}
+              <span>HTTP {{ hop.status_code }}</span>
+            {% endif %}
+          </div>
+          <div>
+            {% if hop.is_https %}
+              <span class="badge badge-verified" style="font-size: 0.7rem;">HTTPS TLS</span>
+            {% else %}
+              <span class="badge badge-invalid" style="font-size: 0.7rem;">Plain HTTP</span>
+            {% endif %}
+          </div>
+        </div>
+
+        <div style="font-family: var(--font-mono); font-size: 0.8rem; color: var(--text-primary); word-break: break-all;">
+          {{ hop.url }}
+        </div>
+
+        <div style="margin-top: 0.45rem; display: flex; flex-wrap: wrap; gap: 0.75rem; font-size: 0.775rem; color: var(--text-tertiary);">
+          <div><strong>Resolved IP:</strong> <code>{{ hop.resolved_ip or 'N/A' }}</code></div>
+          {% if hop.server %}<div><strong>Server:</strong> {{ hop.server }}</div>{% endif %}
+          {% if hop.redirect_to %}
+            <div style="color: var(--accent-primary); width: 100%;">
+              <strong>Redirects to &rarr;</strong> <code>{{ hop.redirect_to }}</code>
+            </div>
+          {% endif %}
+          {% if hop.error %}
+            <div style="color: var(--status-danger); width: 100%;">
+              <strong>Hop Error:</strong> {{ hop.error }}
+            </div>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</details>
+{% endif %}
+
+<!-- Expandable TLS Certificate Details -->
+{% if item.report.network_audit and item.report.network_audit.tls_summary.certificates %}
+<details class="disclosure">
+  <summary style="font-size: 0.95rem;">
+    TLS Certificate Details ({{ item.report.network_audit.tls_summary.certificates | length }} Certificate{% if item.report.network_audit.tls_summary.certificates | length > 1 %}s{% endif %})
+  </summary>
+
+  <div style="margin-top: 0.85rem; display: flex; flex-direction: column; gap: 0.75rem;">
+    {% for cert in item.report.network_audit.tls_summary.certificates %}
+    <div style="background-color: var(--bg-surface-raised); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 0.85rem;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+        <div style="font-weight: 600; font-size: 0.85rem; color: var(--text-primary);">
+          🔒 {{ cert.hostname }} (Port {{ cert.port }})
+        </div>
+        {% if cert.valid %}
+          <span class="badge badge-verified">Valid Certificate</span>
+        {% else %}
+          <span class="badge badge-invalid">Cert Error</span>
+        {% endif %}
+      </div>
+
+      {% if cert.error %}
+        <div style="background-color: var(--status-danger-bg); border: 1px solid var(--status-danger-border); padding: 0.5rem 0.75rem; border-radius: var(--radius-xs); color: var(--status-danger); font-size: 0.8rem; margin-bottom: 0.5rem;">
+          {{ cert.error }}
+        </div>
+      {% endif %}
+
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.75rem; font-size: 0.8rem;">
+        <div>
+          <span style="color: var(--text-tertiary); display: block; font-size: 0.7rem; text-transform: uppercase;">Subject:</span>
+          <div style="font-family: var(--font-mono);">{{ cert.subject.commonName or 'N/A' }}</div>
+        </div>
+        <div>
+          <span style="color: var(--text-tertiary); display: block; font-size: 0.7rem; text-transform: uppercase;">Issuer:</span>
+          <div style="font-family: var(--font-mono);">{{ cert.issuer.commonName or cert.issuer.organizationName or 'N/A' }}</div>
+        </div>
+        <div>
+          <span style="color: var(--text-tertiary); display: block; font-size: 0.7rem; text-transform: uppercase;">Validity:</span>
+          <div style="font-family: var(--font-mono); font-size: 0.75rem;">
+            From: {{ cert.not_before[:10] }} To: {{ cert.not_after[:10] }}
+          </div>
+        </div>
+        <div>
+          <span style="color: var(--text-tertiary); display: block; font-size: 0.7rem; text-transform: uppercase;">Serial:</span>
+          <div style="font-family: var(--font-mono); font-size: 0.75rem;">{{ cert.serial_number or 'N/A' }}</div>
+        </div>
+      </div>
+
+      {% if cert.san %}
+      <details style="margin-top: 0.65rem;">
+        <summary style="font-size: 0.75rem; color: var(--accent-primary); cursor: pointer;">
+          View {{ cert.san | length }} Subject Alternative Names (SANs)
+        </summary>
+        <div style="font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-secondary); word-break: break-all; margin-top: 0.35rem; line-height: 1.4;">
+          {{ cert.san | join(', ') }}
+        </div>
+      </details>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</details>
+{% endif %}
+
+<!-- Expandable Raw JSON Audit Record -->
+<details class="disclosure">
+  <summary style="font-size: 0.95rem;">
+    Raw JSON Audit Record (Technical Diagnostic Data)
+  </summary>
+
+  <div style="margin-top: 0.75rem;">
+    <div style="display: flex; justify-content: flex-end; margin-bottom: 0.35rem;">
+      <button type="button" class="btn btn-secondary btn-sm" onclick="copyToClipboard(document.getElementById('raw_report_pre').innerText, 'Audit report JSON copied!')">
+        Copy Full JSON
+      </button>
+    </div>
+    <pre class="code-block" id="raw_report_pre" style="max-height: 250px;">{{ item.report_json }}</pre>
+  </div>
+</details>
+{% endblock %}

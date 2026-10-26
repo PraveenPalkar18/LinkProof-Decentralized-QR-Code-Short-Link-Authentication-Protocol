@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+
+{% block title %}Trusted Keys{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">Trusted Public Keys</h1>
+  <p class="page-desc">
+    Manage authorized issuer public keys and cryptographic trust boundaries. Only keys marked as trusted can verify authentic records.
+  </p>
+</div>
+
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem; align-items: start;">
+  <!-- Registered Public Keys Table/List -->
+  <div class="card" style="grid-column: span 2;">
+    <div class="card-header">
+      <h2 class="card-title">Registered Issuer Keys</h2>
+      <span class="card-subtitle">{{ keys | length }} key(s) in local trust store</span>
+    </div>
+
+    {% if keys %}
+    <div class="table-responsive">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Issuer &amp; Label</th>
+            <th>SHA-256 Fingerprint</th>
+            <th>Trust Status</th>
+            <th>Registered</th>
+            <th style="text-align: right;">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for k in keys %}
+          <tr>
+            <td>
+              <div style="font-weight: 600; font-size: 0.85rem; color: var(--text-primary);">
+                {{ k.label or k.issuer_id }}
+              </div>
+              <div style="font-size: 0.775rem; color: var(--text-tertiary);">
+                {{ k.issuer_id }}
+              </div>
+            </td>
+            <td>
+              <div style="display: flex; align-items: center; gap: 0.35rem;">
+                <span class="fingerprint-text" style="font-size: 0.75rem;">
+                  {{ k.fingerprint[:16] }}...{{ k.fingerprint[-8:] }}
+                </span>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="copyToClipboard('{{ k.fingerprint }}', 'Full fingerprint copied!')" title="Copy full SHA-256 fingerprint">
+                  Copy
+                </button>
+              </div>
+            </td>
+            <td>
+              {% if k.is_trusted == 1 %}
+                <span class="badge badge-verified">✓ Trusted</span>
+              {% else %}
+                <span class="badge badge-revoked">⛔ Revoked / Untrusted</span>
+              {% endif %}
+            </td>
+            <td style="font-family: var(--font-mono); font-size: 0.775rem; color: var(--text-tertiary); white-space: nowrap;">
+              {{ k.created_at[:10] }}
+            </td>
+            <td style="text-align: right; white-space: nowrap;">
+              <!-- Toggle Trust -->
+              <form action="{{ url_for('keys.toggle_status', key_id=k.id) }}" method="POST" style="display: inline;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" name="is_trusted" value="{% if k.is_trusted == 1 %}0{% else %}1{% endif %}">
+                <button type="submit" class="btn btn-secondary btn-sm">
+                  {% if k.is_trusted == 1 %}
+                    Revoke Trust
+                  {% else %}
+                    Grant Trust
+                  {% endif %}
+                </button>
+              </form>
+
+              <!-- Delete Key -->
+              <form action="{{ url_for('keys.delete_key', key_id=k.id) }}" method="POST" style="display: inline;" onsubmit="return confirm('Permanently remove this issuer key from the trust store? Any records signed by it will become UNKNOWN_ISSUER.');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button type="submit" class="btn btn-danger btn-sm" style="margin-left: 0.25rem;">
+                  Delete
+                </button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div style="text-align: center; padding: 2.5rem 1rem; color: var(--text-tertiary);">
+      <p style="font-size: 0.95rem; margin-bottom: 0.75rem; color: var(--text-secondary);">No issuer keys registered in the trust store.</p>
+      <p style="font-size: 0.825rem;">Import an issuer's public key or generate a key pair in the Generate QR tab.</p>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Import Public Key Form -->
+  <div class="card">
+    <div class="card-header">
+      <h2 class="card-title">Import Public Key</h2>
+      <span class="card-subtitle">PEM Format</span>
+    </div>
+
+    <form action="{{ url_for('keys.add_key') }}" method="POST">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+      <div class="form-group">
+        <label class="form-label" for="issuer_id">Issuer Identifier *</label>
+        <input type="text" class="form-control" id="issuer_id" name="issuer_id" placeholder="e.g. university.edu" required>
+        <div class="form-help">Must match the issuer identifier declared in signed records.</div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="label">Key Label / Friendly Name</label>
+        <input type="text" class="form-control" id="label" name="label" placeholder="e.g. University Root Authority">
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="public_key_pem">SubjectPublicKeyInfo PEM *</label>
+        <textarea class="form-control" id="public_key_pem" name="public_key_pem" rows="6" placeholder="-----BEGIN PUBLIC KEY-----&#10;MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE...&#10;-----END PUBLIC KEY-----" required></textarea>
+        <div class="form-help">Standard NIST P-256 (secp256r1) ECDSA public key.</div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-checkbox">
+          <input type="checkbox" name="is_trusted" value="1" checked>
+          <span>Mark as Trusted immediately upon import</span>
+        </label>
+      </div>
+
+      <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 0.25rem;">
+        Import Public Key
+      </button>
+    </form>
+  </div>
+</div>
+{% endblock %}
